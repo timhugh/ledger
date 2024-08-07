@@ -18,13 +18,14 @@ func Run(args []string) error {
         Name: "ledger",
         Commands: []*cli.Command{
             &registerCmd,
-            &balancesCmd,
+            BalancesCmd,
         },
     }
     return app.Run(args)
 }
 
 func loadLedger() ledger.Ledger {
+    // TODO: placeholder data
     return ledger.Ledger{
         Transactions: []ledger.Transaction{
             {
