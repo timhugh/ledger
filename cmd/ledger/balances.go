@@ -22,8 +22,7 @@ var BalancesCmd =  &cli.Command{
 
 func Balances(ledger ledger.Ledger) error {
     balances := ledger.Balances()
-    const padding = 4
-    w := tabwriter.NewWriter(os.Stdout, 0, 0, padding, ' ', 0)
+    w := tabwriter.NewWriter(os.Stdout, 0, 0, 4, ' ', 0)
     fmt.Fprintln(w, "Account\tBalance")
     for account, balance := range balances {
         fmt.Fprintf(w, "%s\t%d\n", account, balance)
