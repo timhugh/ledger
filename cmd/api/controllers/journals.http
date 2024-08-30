@@ -1,1 +1,1 @@
-GET {{host}}/journals/1
+GET {{host}}/journals/{{journal_uuid}}
