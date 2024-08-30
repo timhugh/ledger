@@ -97,31 +97,22 @@ func (c *Client) GetTransactions(journalUUID string) ([]*ledger.Transaction, err
 	// TODO: map makes transaction order non-deterministic
 	transactionsByID := make(map[string]*ledger.Transaction)
 	for rows.Next() {
-		var transaction ledger.Transaction
-		var lineItem ledger.TransactionLineItem
+		var row struct {
+			ledger.Transaction
+			ledger.TransactionLineItem
+		}
 
-		err := rows.Scan(
-			&transaction.TransactionUUID,
-			&transaction.JournalUUID,
-			&transaction.Description,
-			&transaction.Memo,
-			&lineItem.TransactionLineItemUUID,
-			&lineItem.TransactionUUID,
-			&lineItem.Date,
-			&lineItem.Amount,
-			&lineItem.Account,
-			&lineItem.Status,
-		)
+		err := rows.StructScan(&row)
 		if err != nil {
 			return nil, err
 		}
 
-		if transactionsByID[transaction.TransactionUUID] == nil {
-			transactionsByID[transaction.TransactionUUID] = &transaction
+		if transactionsByID[row.Transaction.TransactionUUID] == nil {
+			transactionsByID[row.Transaction.TransactionUUID] = &row.Transaction
 		}
-		if lineItem.TransactionLineItemUUID != "" {
-			transactionsByID[transaction.TransactionUUID].TransactionLineItems =
-				append(transactionsByID[transaction.TransactionUUID].TransactionLineItems, &lineItem)
+		if row.TransactionLineItem.TransactionLineItemUUID != "" {
+			transactionsByID[row.TransactionLineItem.TransactionUUID].TransactionLineItems =
+				append(transactionsByID[row.TransactionLineItem.TransactionUUID].TransactionLineItems, &row.TransactionLineItem)
 		}
 	}
 
