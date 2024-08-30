@@ -1,26 +1,42 @@
 package sqlite
 
 import (
-	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/timhugh/ledger"
 	"strings"
 )
 
-var (
-	journalColumns     []string = []string{"l.uuid", "l.name"}
-	transactionColumns []string = []string{"t.uuid", "t.journal_uuid", "t.description", "t.memo"}
-	lineItemColumns    []string = []string{"li.uuid", "li.transaction_uuid", "li.date", "li.amount", "li.account", "li.status"}
-)
+var NoRecordError = errors.New("no record found")
+
+var journalColumns = []string{
+	"journals.journal_uuid as journal_uuid",
+	"journals.name as journal_name",
+}
+var transactionColumns = []string{
+	"transactions.transaction_uuid as transaction_uuid",
+	"transactions.journal_uuid as transaction_journal_uuid",
+	"transactions.description as transaction_description",
+	"transactions.memo as transaction_memo",
+}
+var transactionLineItemColumns = []string{
+	"transaction_line_items.transaction_line_item_uuid as transaction_line_item_uuid",
+	"transaction_line_items.transaction_uuid as transaction_line_item_transaction_uuid",
+	"transaction_line_items.date as transaction_line_item_date",
+	"transaction_line_items.amount as transaction_line_item_amount",
+	"transaction_line_items.account as transaction_line_item_account",
+	"transaction_line_items.status as transaction_line_item_status",
+}
 
 type Client struct {
-	db *sql.DB
+	db *sqlx.DB
 }
 
 func Open(path string) (*Client, error) {
-	db, err := sql.Open("sqlite3", path)
+	db, err := sqlx.Open("sqlite3", path)
 	if err != nil {
 		return nil, err
 	}
@@ -32,96 +48,87 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) CreateJournal(journal *ledger.Journal) error {
-	if journal.UUID == "" {
-		journal.UUID = uuid.NewString()
+	if journal.JournalUUID == "" {
+		journal.JournalUUID = uuid.NewString()
 	}
-	query := `INSERT INTO journals (uuid, name) VALUES (?, ?)`
-	_, err := c.db.Exec(query, journal.UUID, journal.Name)
+	query := `INSERT INTO journals (journal_uuid, name) VALUES (?, ?)`
+	_, err := c.db.Exec(query, journal.JournalUUID, journal.Name)
 	return err
 }
 
 func (c *Client) GetJournal(uuid string) (*ledger.Journal, error) {
-	query := fmt.Sprintf(`SELECT %s, %s, %s 
-    FROM journals l
-    LEFT JOIN transactions t ON l.uuid = t.journal_uuid
-    LEFT JOIN transaction_line_items li ON t.uuid = li.transaction_uuid
-    `,
-		strings.Join(journalColumns, ", "),
-		strings.Join(transactionColumns, ", "),
-		strings.Join(lineItemColumns, ", "))
+	query := fmt.Sprint("SELECT ",
+		strings.Join(journalColumns, ", "), " ",
+		"FROM journals ",
+		"WHERE journals.journal_uuid = ?")
 
-	result, err := c.db.Query(query)
+	var journals []*ledger.Journal
+	if err := c.db.Select(&journals, query, uuid); err != nil {
+		return nil, err
+	}
+
+	if len(journals) == 0 {
+		return nil, NoRecordError
+	}
+
+	journal := journals[0]
+	transactions, err := c.GetTransactions(journal.JournalUUID)
 	if err != nil {
 		return nil, err
 	}
-	defer result.Close()
+	journal.Transactions = transactions
 
-	var currentJournal ledger.Journal
-	var currentTransaction ledger.Transaction
-	for result.Next() {
-		var transactionUUID sql.NullString
-		var transactionJournalUUID sql.NullString
-		var transactionDescription sql.NullString
-		var transactionMemo sql.NullString
+	return journal, nil
+}
 
-		var lineItemUUID sql.NullString
-		var lineItemTransactionUUID sql.NullString
-		var lineItemDate sql.NullString
-		var lineItemAmount sql.NullInt64
-		var lineItemAccount sql.NullString
-		var lineItemStatus sql.NullString
+func (c *Client) GetTransactions(journalUUID string) ([]*ledger.Transaction, error) {
+	query := fmt.Sprint("SELECT ",
+		strings.Join(transactionColumns, ", "), ", ",
+		strings.Join(transactionLineItemColumns, ", "), " ",
+		"FROM transactions ",
+		"JOIN transaction_line_items ON transactions.transaction_uuid = transaction_line_items.transaction_uuid ",
+		"WHERE transactions.journal_uuid = ?")
 
-		err = result.Scan(
-			&currentJournal.UUID,
-			&currentJournal.Name,
-			&transactionUUID,
-			&transactionJournalUUID,
-			&transactionDescription,
-			&transactionMemo,
-			&lineItemUUID,
-			&lineItemTransactionUUID,
-			&lineItemDate,
-			&lineItemAmount,
-			&lineItemAccount,
-			&lineItemStatus,
+	rows, err := c.db.Queryx(query, journalUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: map makes transaction order non-deterministic
+	transactionsByID := make(map[string]*ledger.Transaction)
+	for rows.Next() {
+		var transaction ledger.Transaction
+		var lineItem ledger.TransactionLineItem
+
+		err := rows.Scan(
+			&transaction.TransactionUUID,
+			&transaction.JournalUUID,
+			&transaction.Description,
+			&transaction.Memo,
+			&lineItem.TransactionLineItemUUID,
+			&lineItem.TransactionUUID,
+			&lineItem.Date,
+			&lineItem.Amount,
+			&lineItem.Account,
+			&lineItem.Status,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		if transactionUUID.Valid {
-			if currentTransaction.UUID == "" {
-				currentTransaction = ledger.Transaction{
-					UUID:        transactionUUID.String,
-					JournalUUID: currentJournal.UUID,
-					Description: transactionDescription.String,
-					Memo:        transactionMemo.String,
-				}
-			}
-			if currentTransaction.UUID != transactionUUID.String {
-				currentJournal.Transactions = append(currentJournal.Transactions, currentTransaction)
-				currentTransaction = ledger.Transaction{
-					UUID:        transactionUUID.String,
-					JournalUUID: currentJournal.UUID,
-					Description: transactionDescription.String,
-					Memo:        transactionMemo.String,
-				}
-			}
-		} else {
-			continue
+		if transactionsByID[transaction.TransactionUUID] == nil {
+			transactionsByID[transaction.TransactionUUID] = &transaction
 		}
-
-		if lineItemUUID.Valid {
-			currentTransaction.LineItems = append(currentTransaction.LineItems, ledger.LineItem{
-				UUID:            lineItemUUID.String,
-				TransactionUUID: lineItemTransactionUUID.String,
-				Date:            lineItemDate.String,
-				Amount:          int(lineItemAmount.Int64),
-				Account:         lineItemAccount.String,
-				Status:          ledger.LineItemStatus(lineItemStatus.String),
-			})
+		if lineItem.TransactionLineItemUUID != "" {
+			transactionsByID[transaction.TransactionUUID].TransactionLineItems =
+				append(transactionsByID[transaction.TransactionUUID].TransactionLineItems, &lineItem)
 		}
 	}
-	currentJournal.Transactions = append(currentJournal.Transactions, currentTransaction)
-	return &currentJournal, nil
+
+	var transactions []*ledger.Transaction
+	for _, transaction := range transactionsByID {
+		transactions = append(transactions, transaction)
+	}
+
+	return transactions, nil
 }

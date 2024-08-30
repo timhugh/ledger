@@ -26,14 +26,14 @@ var migrations = []Migration{
 	{
 		1, "create journals table",
 		`create table journals (
-            uuid string primary key not null,
+            journal_uuid string primary key not null,
             name text not null
         );`,
 	},
 	{
 		2, "create transactions table",
 		`create table transactions (
-            uuid string primary key not null,
+            transaction_uuid string primary key not null,
             journal_uuid int not null,
             description text,
             memo text not null
@@ -42,12 +42,12 @@ var migrations = []Migration{
 	{
 		3, "create line_items table",
 		`create table transaction_line_items (
-            uuid string primary key not null,
+            transaction_line_item_uuid string primary key not null,
             transaction_uuid int not null,
             date text not null,
             amount int not null,
             account text not null,
-            status text not null default "pending"
+            status text not null default 'pending'
         );`,
 	},
 }

@@ -5,7 +5,7 @@ import (
 	"github.com/timhugh/ledger"
 )
 
-func GetJournal(repo ledger.JournalRepository) gin.HandlerFunc {
+func GetJournal(repo ledger.JournalGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		journalID := c.Param("journal_id")
 		journal, err := repo.GetJournal(journalID)
