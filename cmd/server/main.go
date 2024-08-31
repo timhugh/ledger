@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/timhugh/ledger/cmd/api/controllers"
+	"github.com/timhugh/ledger/cmd/server/controllers"
 	"github.com/timhugh/ledger/db/sqlite"
 	"log"
 )
