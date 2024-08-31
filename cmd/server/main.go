@@ -1,10 +1,11 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/timhugh/ledger/cmd/server/controllers"
+	"github.com/timhugh/ledger/cmd/server/app/journals"
+	"github.com/timhugh/ledger/cmd/server/middleware"
 	"github.com/timhugh/ledger/db/sqlite"
 	"log"
+	"net/http"
 )
 
 func main() {
@@ -13,13 +14,21 @@ func main() {
 		log.Fatal(err)
 	}
 
-	router := gin.New()
-	router.Use(gin.Logger())
+	http.Handle("GET /ping", wrap(Ping()))
 
-	router.GET("/ping", controllers.Ping())
-	router.GET("/journals/:journal_id", controllers.GetJournal(repo))
+	http.Handle("GET /api/journals/{journal_id}", wrapAPI(journals.GetJournalJson(repo)))
+	http.Handle("GET /journals/{journal_id}", wrap(journals.GetJournalHtml(repo)))
 
-	if err := router.Run(); err != nil {
+	log.Println("Listening on :8080")
+	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func wrap(handlerFunc http.Handler) http.Handler {
+	return middleware.RequestID(middleware.Log(handlerFunc))
+}
+
+func wrapAPI(handlerFunc http.Handler) http.Handler {
+	return middleware.RequestID(middleware.Log(middleware.JSON(handlerFunc)))
 }
