@@ -151,6 +151,12 @@ func TestGetJournal(t *testing.T) {
         assert.Equal(expectedJournal.JournalUUID, actualJournal.JournalUUID)
         assert.Equal(expectedJournal.Name, actualJournal.Name)
 	})
+    t.Run("returns an error if the journal does not exist", func(t *testing.T) {
+        assert, client, _ := testClient(t)
+        journal, err := client.GetJournal("nonexistent")
+        assert.Equal(NoRecordError, err)
+        assert.Nil(journal)
+    })
 	t.Run("returns a journal with transactions and line items", func(t *testing.T) {
 		assert, client, db := testClient(t)
 
