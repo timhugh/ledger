@@ -1,5 +1,0 @@
-### Journal HTML view
-GET {{host}}/journals/{{journal_uuid}}
-
-### Journal JSON API
-GET {{host}}/api/journals/{{journal_uuid}}

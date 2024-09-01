@@ -22,6 +22,13 @@ type Journal struct {
 	Transactions []*Transaction `json:"transactions" db:"transactions"`
 }
 
+type JournalCreator interface {
+	CreateJournal(journal *Journal) error
+}
+type JournalGetter interface {
+	GetJournal(uuid string) (*Journal, error)
+}
+
 type Transaction struct {
 	TransactionUUID string `json:"transaction_uuid" db:"transaction_uuid"`
 	JournalUUID     string `json:"journal_uuid" db:"transaction_journal_uuid"`
@@ -29,6 +36,10 @@ type Transaction struct {
 	Description          string                 `json:"description" db:"transaction_description"`
 	Memo                 string                 `json:"memo" db:"transaction_memo"`
 	TransactionLineItems []*TransactionLineItem `json:"transaction_line_items" db:"transaction_line_items"`
+}
+
+type TransactionLister interface {
+	GetTransactions(journalUUID string) ([]*Transaction, error)
 }
 
 func (t *Transaction) Valid() error {

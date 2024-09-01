@@ -1,19 +1,21 @@
 package middleware
 
 import (
-	"log"
+	"context"
+	"github.com/google/uuid"
+	"github.com/timhugh/ctxlogger"
 	"net/http"
 )
 
-func Log(next http.Handler) http.Handler {
+func Log(ctx context.Context, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, r)
+		requestID := uuid.NewString()
+		ctx := ctxlogger.AddParam(ctx, "request_id", requestID)
+		r = r.WithContext(ctx)
 
-		log.Printf(
-			"%s %s request_id=%s",
-			r.Method,
-			r.URL.Path,
-			r.Context().Value("request_id"),
-		)
+		requestContext := ctxlogger.AddParam(ctxlogger.AddParam(ctx, "method", r.Method), "path", r.URL.Path) // gross
+		ctxlogger.Info(requestContext, "")
+
+		next.ServeHTTP(w, r)
 	})
 }

@@ -123,3 +123,12 @@ func (c *Client) GetTransactions(journalUUID string) ([]*ledger.Transaction, err
 
 	return transactions, nil
 }
+
+func (c *Client) GetSession(uuid string) (*ledger.Session, error) {
+    query := `SELECT session_uuid, user_uuid FROM sessions WHERE session_uuid = ?`
+    var session ledger.Session
+    if err := c.db.Get(&session, query, uuid); err != nil {
+        return nil, err
+    }
+    return &session, nil
+}

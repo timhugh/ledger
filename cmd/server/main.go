@@ -1,34 +1,43 @@
 package main
 
 import (
-	"github.com/timhugh/ledger/cmd/server/app/journals"
+	"context"
+	"github.com/timhugh/ctxlogger"
 	"github.com/timhugh/ledger/cmd/server/middleware"
 	"github.com/timhugh/ledger/db/sqlite"
-	"log"
 	"net/http"
+	"os"
 )
 
 func main() {
-	repo, err := sqlite.Open("development.db")
+	ctx := context.Background()
+
+	db := "development.db"
+	repo, err := sqlite.Open(db)
 	if err != nil {
-		log.Fatal(err)
+		ctxlogger.Error(ctx, "failed to open database '%s' %w", db, err)
+		os.Exit(1)
 	}
 
-	http.Handle("GET /ping", wrap(Ping()))
+	http.Handle("GET /ping", wrap(ctx, Ping()))
+	http.Handle("GET /{$}", wrap(ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctxlogger.Info(r.Context(), "redirecting to /transactions")
+		http.Redirect(w, r, "/transactions", http.StatusFound)
+	})))
 
-	http.Handle("GET /api/journals/{journal_id}", wrapAPI(journals.GetJournalJson(repo)))
-	http.Handle("GET /journals/{journal_id}", wrap(journals.GetJournalHtml(repo)))
-
-	log.Println("Listening on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		log.Fatal(err)
+	ctxlogger.Info(ctx, "server listening on localhost:8080")
+	if err := http.ListenAndServe("localhost:8080", nil); err != nil {
+		ctxlogger.Error(ctx, "server failed with error: %s", err.Error())
 	}
 }
 
-func wrap(handlerFunc http.Handler) http.Handler {
-	return middleware.RequestID(middleware.Log(handlerFunc))
+func wrap(ctx context.Context, handler http.Handler) http.Handler {
+	return middleware.Log(
+		ctx,
+		handler,
+	)
 }
 
-func wrapAPI(handlerFunc http.Handler) http.Handler {
-	return middleware.RequestID(middleware.Log(middleware.JSON(handlerFunc)))
+func wrapAPI(ctx context.Context, handler http.Handler) http.Handler {
+	return wrap(ctx, middleware.JSON(handler))
 }

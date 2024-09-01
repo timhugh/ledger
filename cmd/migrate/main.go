@@ -1,29 +1,34 @@
 package main
 
 import (
+	"context"
+	"github.com/timhugh/ctxlogger"
 	"github.com/timhugh/ledger/db/sqlite"
-	"log"
 	"os"
 )
 
 func main() {
+	ctx := context.Background()
 	if len(os.Args) < 2 {
-		log.Fatal("missing database file")
+		ctxlogger.Error(ctx, "missing database file argument")
+		os.Exit(1)
 	}
 
 	file := os.Args[1]
-	log.Printf("opening database %s\n", file)
+	ctxlogger.Info(ctx, "opening database %s", file)
 	client, err := sqlite.Open(file)
 	if err != nil {
-		log.Fatal(err)
+		ctxlogger.Error(ctx, "failed to open database: %s", err.Error())
+		os.Exit(1)
 	}
 
-	log.Printf("running migrations\n")
+	ctxlogger.Info(ctx, "running migrations\n")
 
-	err = client.Migrate()
+	err = client.Migrate(ctx)
 	if err != nil {
-		log.Fatal(err)
+		ctxlogger.Error(ctx, "migration failed: %s", err.Error())
+		os.Exit(1)
 	}
 
-	log.Printf("migrations complete\n")
+	ctxlogger.Info(ctx, "migrations complete\n")
 }
