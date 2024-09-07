@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"errors"
 )
 
@@ -23,10 +24,10 @@ type Journal struct {
 }
 
 type JournalCreator interface {
-	CreateJournal(journal *Journal) error
+	CreateJournal(ctx context.Context, journal *Journal) error
 }
 type JournalGetter interface {
-	GetJournal(uuid string) (*Journal, error)
+	GetJournal(ctx context.Context, uuid string) (*Journal, error)
 }
 
 type Transaction struct {
@@ -39,7 +40,7 @@ type Transaction struct {
 }
 
 type TransactionLister interface {
-	GetTransactions(journalUUID string) ([]*Transaction, error)
+	GetTransactions(ctx context.Context, journalUUID string) ([]*Transaction, error)
 }
 
 func (t *Transaction) Valid() error {

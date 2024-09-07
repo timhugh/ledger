@@ -8,8 +8,8 @@ import (
 func (c *Client) Migrate(ctx context.Context) error {
 	for _, migration := range migrations {
 		// TODO: track migrations in table
-		ctxlogger.Info(ctx, "running migration %d: %s\n", migration.ID, migration.Name)
-		_, err := c.db.Exec(migration.SQL)
+		ctxlogger.Info(ctx, "running migration %d: %s", migration.ID, migration.Name)
+		_, err := c.db.ExecContext(ctx, migration.SQL)
 		if err != nil {
 			return err
 		}
@@ -37,7 +37,8 @@ var migrations = []Migration{
             transaction_uuid string primary key not null,
             journal_uuid int not null,
             description text,
-            memo text not null
+            memo text not null,
+            FOREIGN KEY (journal_uuid) REFERENCES journals(journal_uuid)
         );`,
 	},
 	{
@@ -48,7 +49,8 @@ var migrations = []Migration{
             date text not null,
             amount int not null,
             account text not null,
-            status text not null default 'pending'
+            status text not null default 'pending',
+            FOREIGN KEY (transaction_uuid) REFERENCES transactions(transaction_uuid)
         );`,
 	},
 	{
@@ -56,7 +58,8 @@ var migrations = []Migration{
 		`create table users (
             user_uuid string primary key not null,
             login text not null,
-            password_hash text not null
+            password_hash text not null,
+            password_salt text not null
         );`,
 	},
 	{
@@ -64,7 +67,7 @@ var migrations = []Migration{
 		`create table sessions (
             session_uuid string primary key not null,
             user_uuid string not null,
-            created_at text not null default current_timestamp
+            FOREIGN KEY (user_uuid) REFERENCES users(user_uuid)
         );`,
 	},
 }

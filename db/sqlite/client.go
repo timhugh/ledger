@@ -1,6 +1,8 @@
 package sqlite
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
@@ -9,8 +11,6 @@ import (
 	"github.com/timhugh/ledger"
 	"strings"
 )
-
-var NoRecordError = errors.New("no record found")
 
 var journalColumns = []string{
 	"journals.journal_uuid as journal_uuid",
@@ -30,6 +30,16 @@ var transactionLineItemColumns = []string{
 	"transaction_line_items.account as transaction_line_item_account",
 	"transaction_line_items.status as transaction_line_item_status",
 }
+var sessionColumns = []string{
+	"sessions.session_uuid as session_uuid",
+	"sessions.user_uuid as session_user_uuid",
+}
+var userColumns = []string{
+	"users.user_uuid as user_uuid",
+	"users.login as user_login",
+	"users.password_hash as user_password_hash",
+	"users.password_salt as user_password_salt",
+}
 
 type Client struct {
 	db *sqlx.DB
@@ -47,49 +57,41 @@ func (c *Client) Close() error {
 	return c.db.Close()
 }
 
-func (c *Client) CreateJournal(journal *ledger.Journal) error {
+func (c *Client) CreateJournal(ctx context.Context, journal *ledger.Journal) error {
 	if journal.JournalUUID == "" {
 		journal.JournalUUID = uuid.NewString()
 	}
-	query := `INSERT INTO journals (journal_uuid, name) VALUES (?, ?)`
-	_, err := c.db.Exec(query, journal.JournalUUID, journal.Name)
+	query := "INSERT INTO journals (journal_uuid, name) VALUES (?, ?)"
+	_, err := c.db.ExecContext(ctx, query, journal.JournalUUID, journal.Name)
 	return err
 }
 
-func (c *Client) GetJournal(uuid string) (*ledger.Journal, error) {
-	query := fmt.Sprint("SELECT ",
-		strings.Join(journalColumns, ", "), " ",
-		"FROM journals ",
-		"WHERE journals.journal_uuid = ?")
+func (c *Client) GetJournal(ctx context.Context, uuid string) (*ledger.Journal, error) {
+	query := fmt.Sprintf("SELECT %s FROM journals WHERE journals.journal_uuid = ?",
+		strings.Join(journalColumns, ", "))
 
-	var journals []*ledger.Journal
-	if err := c.db.Select(&journals, query, uuid); err != nil {
+	var journal ledger.Journal
+	if err := c.db.GetContext(ctx, &journal, query, uuid); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ledger.ErrNotFound
+		}
 		return nil, err
 	}
 
-	if len(journals) == 0 {
-		return nil, NoRecordError
-	}
-
-	journal := journals[0]
-	transactions, err := c.GetTransactions(journal.JournalUUID)
+	transactions, err := c.GetTransactions(ctx, journal.JournalUUID)
 	if err != nil {
 		return nil, err
 	}
 	journal.Transactions = transactions
 
-	return journal, nil
+	return &journal, nil
 }
 
-func (c *Client) GetTransactions(journalUUID string) ([]*ledger.Transaction, error) {
-	query := fmt.Sprint("SELECT ",
-		strings.Join(transactionColumns, ", "), ", ",
-		strings.Join(transactionLineItemColumns, ", "), " ",
-		"FROM transactions ",
-		"JOIN transaction_line_items ON transactions.transaction_uuid = transaction_line_items.transaction_uuid ",
-		"WHERE transactions.journal_uuid = ?")
+func (c *Client) GetTransactions(ctx context.Context, journalUUID string) ([]*ledger.Transaction, error) {
+	query := fmt.Sprintf("SELECT %s FROM transactions JOIN transaction_line_items ON transactions.transaction_uuid = transaction_line_items.transaction_uuid WHERE transactions.journal_uuid = ?",
+		strings.Join(transactionColumns, ", ")+", "+strings.Join(transactionLineItemColumns, ", "))
 
-	rows, err := c.db.Queryx(query, journalUUID)
+	rows, err := c.db.QueryxContext(ctx, query, journalUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -124,11 +126,21 @@ func (c *Client) GetTransactions(journalUUID string) ([]*ledger.Transaction, err
 	return transactions, nil
 }
 
-func (c *Client) GetSession(uuid string) (*ledger.Session, error) {
-    query := `SELECT session_uuid, user_uuid FROM sessions WHERE session_uuid = ?`
-    var session ledger.Session
-    if err := c.db.Get(&session, query, uuid); err != nil {
-        return nil, err
-    }
-    return &session, nil
+func (c *Client) GetSession(ctx context.Context, uuid string) (*ledger.Session, error) {
+	query := fmt.Sprintf("SELECT %s, %s FROM sessions JOIN users ON sessions.user_uuid = users.user_uuid WHERE sessions.session_uuid = ?",
+		strings.Join(sessionColumns, ", "),
+		strings.Join(userColumns, ", "))
+	var result struct {
+		ledger.Session
+		ledger.User
+	}
+	if err := c.db.GetContext(ctx, &result, query, uuid); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ledger.ErrNotFound
+		}
+		return nil, err
+	}
+	session := &result.Session
+	session.User = &result.User
+	return session, nil
 }

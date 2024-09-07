@@ -4,20 +4,18 @@ import (
 	"context"
 	"github.com/timhugh/ctxlogger"
 	"github.com/timhugh/ledger/cmd/server/middleware"
-	"github.com/timhugh/ledger/db/sqlite"
 	"net/http"
-	"os"
 )
 
 func main() {
 	ctx := context.Background()
 
-	db := "development.db"
-	repo, err := sqlite.Open(db)
-	if err != nil {
-		ctxlogger.Error(ctx, "failed to open database '%s' %w", db, err)
-		os.Exit(1)
-	}
+	//db := "development.db"
+	//repo, err := sqlite.Open(db)
+	//if err != nil {
+	//	ctxlogger.Error(ctx, "failed to open database '%s' %w", db, err)
+	//	os.Exit(1)
+	//}
 
 	http.Handle("GET /ping", wrap(ctx, Ping()))
 	http.Handle("GET /{$}", wrap(ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
